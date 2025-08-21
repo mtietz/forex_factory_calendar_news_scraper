@@ -31,9 +31,6 @@ ALLOWED_CURRENCY_CODES = ['CAD', 'EUR', 'GBP', 'USD']
 # Allowed impact levels for filtering news events
 ALLOWED_IMPACT_COLORS = ['red', 'orange', 'gray']
 
-# Timezone configuration
-SCRAPER_TIMEZONE = None         # This will be detected from Selenium
-
 # Set this to the target timezone you'd like your output to be in.
 # If left as None, no conversion will happen.
 # Examples:
