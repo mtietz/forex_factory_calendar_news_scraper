@@ -60,7 +60,10 @@ def reformat_data(data: list, year: str) -> list:
                 current_day = date_parts["day"]
 
         if "time" in new_row:
-            current_time = new_row["time"].strip()
+            if new_row["time"]!="empty":
+                current_time = new_row["time"].strip()
+            else:
+                new_row["time"] = current_time
 
         if len(row) == 1:
             continue
@@ -87,10 +90,22 @@ def reformat_data(data: list, year: str) -> list:
             if value == "empty":
                 new_row[key] = ""
 
-        structured_rows.append(new_row)
+        row = filter_row(new_row)
+        if row:
+            structured_rows.append(new_row)
 
     return structured_rows
 
+
+def filter_row(row):
+
+    if row['currency'] not in config.ALLOWED_CURRENCY_CODES:
+        return False
+    
+    if row['impact'].lower() not in config.ALLOWED_IMPACT_COLORS:
+        return False
+    
+    return row
 
 def save_csv(data, month, year):
     structured_rows = reformat_data(data, year)
