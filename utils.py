@@ -5,6 +5,7 @@ import pytz
 import pandas as pd
 from datetime import datetime
 import config
+from urllib.request import urlopen
 
 
 def read_json(path):
@@ -67,10 +68,9 @@ def reformat_data(data: list, year: str) -> list:
         new_row["day"] = current_day
         new_row["date"] = current_date
 
-        if config.SCRAPER_TIMEZONE and config.TARGET_TIMEZONE:
-            new_row["time"] = convert_time_zone(
-                current_date, current_time, config.SCRAPER_TIMEZONE, config.TARGET_TIMEZONE
-            )
+        scraper_timezone = find_location_timezone()
+        if scraper_timezone and config.TARGET_TIMEZONE:
+            new_row["time"] = convert_time_zone(current_date, current_time, scraper_timezone, config.TARGET_TIMEZONE)
         else:
             new_row["time"] = current_time
 
@@ -126,3 +126,10 @@ def convert_time_zone(date_str, time_str, from_zone_str, to_zone_str):
     except Exception as e:
         print(f"[WARN] Failed to convert '{time_str}' on {date_str}: {e}")
         return time_str
+
+
+def find_location_timezone():
+    url = 'http://ipinfo.io/json'
+    response = urlopen(url)
+    data = json.load(response)
+    return data['timezone']
