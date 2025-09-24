@@ -26,10 +26,10 @@ ICON_COLOR_MAP = {
 }
 
 # Allowed currency codes for filtering news events
-ALLOWED_CURRENCY_CODES = ['CAD', 'EUR', 'GBP', 'USD']
+ALLOWED_CURRENCY_CODES = ['USD']
 
 # Allowed impact levels for filtering news events
-ALLOWED_IMPACT_COLORS = ['red', 'orange', 'gray']
+ALLOWED_IMPACT_COLORS = ['red', 'gray']
 
 # Set this to the target timezone you'd like your output to be in.
 # If left as None, no conversion will happen.
@@ -42,4 +42,4 @@ ALLOWED_IMPACT_COLORS = ['red', 'orange', 'gray']
 #   "Asia/Karachi"        → Pakistan Standard Time
 #   "Asia/Kolkata"        → India Standard Time
 
-TARGET_TIMEZONE = "Asia/Karachi"
+TARGET_TIMEZONE = "US/Eastern"
