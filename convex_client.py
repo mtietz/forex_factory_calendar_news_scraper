@@ -126,14 +126,17 @@ def save_to_convex(data: List[Dict], month: str, year: str) -> Dict[str, Any]:
         # Note: You'll need to create the corresponding mutation in your Convex backend
         saved_count = 0
 
-        for record in clean_data:
+        for i, record in enumerate(clean_data):
             try:
                 # This calls a Convex mutation function - now in economicEvents.ts
                 result = client.mutation("economicEvents:saveEconomicEvent", record)
                 saved_count += 1
+                logger.info(f"Saved record {i+1}/{len(clean_data)}: {record.get('event', 'Unknown event')}")
 
             except Exception as record_error:
-                logger.error(f"Failed to save individual record: {record_error}")
+                logger.error(f"Failed to save record {i+1}/{len(clean_data)}: {record.get('event', 'Unknown')}")
+                logger.error(f"Record error details: {record_error}")
+                logger.error(f"Problematic record: {record}")
                 # Continue with other records even if one fails
                 continue
 

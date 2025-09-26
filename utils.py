@@ -71,7 +71,7 @@ def reformat_data(data: list, year: str) -> list:
         new_row["day"] = current_day
         new_row["date"] = current_date
 
-        scraper_timezone = find_location_timezone()
+        scraper_timezone = "Europe/Berlin"
         if scraper_timezone and config.TARGET_TIMEZONE:
             new_row["time"] = convert_time_zone(current_date, current_time, scraper_timezone, config.TARGET_TIMEZONE)
         else:
@@ -197,9 +197,3 @@ def convert_time_zone(date_str, time_str, from_zone_str, to_zone_str):
         print(f"[WARN] Failed to convert '{time_str}' on {date_str}: {e}")
         return time_str
 
-
-def find_location_timezone():
-    url = 'http://ipinfo.io/json'
-    response = urlopen(url)
-    data = json.load(response)
-    return data['timezone']
