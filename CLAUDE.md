@@ -22,17 +22,18 @@ cp .env.example .env
 python3 app.py
 
 # Available endpoints:
-# GET  /health          - Health check
-# GET  /status          - Check scraping status
-# GET  /logs            - View recent activity logs
-# GET  /convex/test     - Test Convex database connection
-# GET  /scrape          - Scrape current month
-# GET  /scrape/<month>  - Scrape specific month
+# GET/POST /health          - Health check
+# GET      /status          - Check scraping status
+# GET      /logs            - View recent activity logs
+# GET      /convex/test     - Test Convex database connection
+# GET/POST /scrape          - Scrape current month
+# GET/POST /scrape/<month>  - Scrape specific month
 
 # Example API usage:
 curl http://localhost:5000/scrape
 curl http://localhost:5000/scrape/january
 curl http://localhost:5000/status
+curl -X POST http://localhost:5000/scrape
 ```
 
 #### CLI (Legacy)
@@ -49,7 +50,7 @@ python3 simple_scrape.py
 
 ## Architecture
 
-This is a Python-based Forex Factory calendar news scraper that uses Selenium WebDriver to extract economic news events. The project consists of 4 main components:
+This is a Python-based Forex Factory calendar news scraper that uses Selenium WebDriver to extract economic news events. The project consists of 6 main components:
 
 ### Core Files
 - **app.py**: Flask web API server that wraps the scraper with REST endpoints, logging, and status monitoring
@@ -83,8 +84,12 @@ This is a Python-based Forex Factory calendar news scraper that uses Selenium We
 **Environment Configuration (`.env`)**:
 - `CONVEX_URL`: Your Convex database deployment URL
 - `DATA_STORAGE`: Storage method - "csv", "convex", or "both"
-- `TARGET_TIMEZONE`: Override default timezone
-- Flask server settings (host, port, debug mode)
+- `TARGET_TIMEZONE`: Convert times to specific timezone
+- `ALLOWED_CURRENCY_CODES`: Filter events by currency (comma-separated)
+- `ALLOWED_IMPACT_COLORS`: Filter by impact level (comma-separated)
+- `FLASK_DEBUG`: Enable Flask debug mode
+- `FLASK_HOST`: Flask server host (default: 0.0.0.0)
+- `FLASK_PORT`: Flask server port (default: 5000)
 
 ### Key Features
 - **Web API**: RESTful endpoints with real-time status monitoring
@@ -97,4 +102,9 @@ This is a Python-based Forex Factory calendar news scraper that uses Selenium We
 - **Environment-based Config**: Easy deployment across different environments
 
 ### Deployment Ready
-The scraper is containerization-ready with Flask web API, environment variable configuration, and flexible data storage options. Suitable for deployment on VPS platforms like Dokploy with scheduled execution via cron jobs or API triggers.
+The scraper is containerization-ready with Flask web API, environment variable configuration, and flexible data storage options. Includes Dockerfile with modern Chrome installation and dependency handling. Suitable for deployment on VPS platforms like Dokploy with scheduled execution via cron jobs or API triggers.
+
+### Data Storage
+- **CSV Files**: Saved in `/news/` directory with format `{Month}_{Year}_news.csv`
+- **Convex Database**: Real-time database integration with automatic syncing
+- **Flexible Configuration**: Choose between CSV only, Convex only, or both simultaneously
