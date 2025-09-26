@@ -108,12 +108,67 @@ def filter_row(row):
     return row
 
 def save_csv(data, month, year):
+    """Save data to CSV file (original functionality)"""
     structured_rows = reformat_data(data, year)
+    if not structured_rows:
+        return False
+
     header = list(structured_rows[0].keys())
     df = pd.DataFrame(structured_rows, columns=header)
     os.makedirs("news", exist_ok=True)
     df.to_csv(f"news/{month}_{year}_news.csv", index=False)
     return True
+
+
+def save_data(data, month, year, storage_method="both"):
+    """
+    Enhanced save function that supports multiple storage methods.
+
+    Args:
+        data: Raw scraped data
+        month: Month name
+        year: Year string
+        storage_method: "csv", "convex", or "both"
+
+    Returns:
+        Dictionary with results from each storage method
+    """
+    results = {
+        "csv": {"attempted": False, "success": False, "error": None},
+        "convex": {"attempted": False, "success": False, "error": None, "saved_count": 0}
+    }
+
+    # Save to CSV if requested
+    if storage_method in ["csv", "both"]:
+        results["csv"]["attempted"] = True
+        try:
+            results["csv"]["success"] = save_csv(data, month, year)
+        except Exception as e:
+            results["csv"]["error"] = str(e)
+
+    # Save to Convex if requested
+    if storage_method in ["convex", "both"]:
+        results["convex"]["attempted"] = True
+        try:
+            # Import here to avoid circular imports and handle missing dependencies
+            from convex_client import save_to_convex
+
+            # Use structured data for Convex (same as CSV)
+            structured_rows = reformat_data(data, year)
+            convex_result = save_to_convex(structured_rows, month, year)
+
+            results["convex"]["success"] = convex_result.get("success", False)
+            results["convex"]["saved_count"] = convex_result.get("saved_count", 0)
+
+            if not convex_result.get("success", False):
+                results["convex"]["error"] = convex_result.get("error", "Unknown error")
+
+        except ImportError:
+            results["convex"]["error"] = "Convex client not available"
+        except Exception as e:
+            results["convex"]["error"] = str(e)
+
+    return results
 
 
 def convert_time_zone(date_str, time_str, from_zone_str, to_zone_str):
