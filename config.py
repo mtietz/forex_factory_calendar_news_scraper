@@ -29,7 +29,7 @@ ICON_COLOR_MAP = {
 ALLOWED_CURRENCY_CODES = ['USD']
 
 # Allowed impact levels for filtering news events
-ALLOWED_IMPACT_COLORS = ['red', 'gray']
+ALLOWED_IMPACT_COLORS = ['red', 'orange', 'gray']
 
 # Set this to the target timezone you'd like your output to be in.
 # If left as None, no conversion will happen.
