@@ -120,7 +120,7 @@ def save_csv(data, month, year):
     return True
 
 
-def save_data(data, month, year, storage_method="both"):
+def save_data(data, month, year, storage_method="both", replace_existing=False):
     """
     Enhanced save function that supports multiple storage methods.
 
@@ -129,6 +129,7 @@ def save_data(data, month, year, storage_method="both"):
         month: Month name
         year: Year string
         storage_method: "csv", "convex", or "both"
+        replace_existing: If True, delete existing events before saving (Convex only)
 
     Returns:
         Dictionary with results from each storage method
@@ -155,7 +156,7 @@ def save_data(data, month, year, storage_method="both"):
 
             # Use structured data for Convex (same as CSV)
             structured_rows = reformat_data(data, year)
-            convex_result = save_to_convex(structured_rows, month, year)
+            convex_result = save_to_convex(structured_rows, month, year, replace_existing=replace_existing)
 
             results["convex"]["success"] = convex_result.get("success", False)
             results["convex"]["saved_count"] = convex_result.get("saved_count", 0)

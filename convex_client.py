@@ -91,7 +91,7 @@ def transform_scraped_data(raw_data: List[Dict], month: str, year: str) -> List[
     return transformed_records
 
 
-def save_to_convex(data: List[Dict], month: str, year: str) -> Dict[str, Any]:
+def save_to_convex(data: List[Dict], month: str, year: str, replace_existing: bool = False) -> Dict[str, Any]:
     """
     Save scraped data to Convex database.
 
@@ -99,6 +99,7 @@ def save_to_convex(data: List[Dict], month: str, year: str) -> Dict[str, Any]:
         data: List of scraped data records
         month: Month name
         year: Year string
+        replace_existing: If True, delete existing events for this month/year before saving
 
     Returns:
         Dictionary with operation results
@@ -112,6 +113,11 @@ def save_to_convex(data: List[Dict], month: str, year: str) -> Dict[str, Any]:
         }
 
     try:
+        # Delete existing events if requested
+        if replace_existing:
+            delete_result = delete_events_by_month(month, year)
+            logger.info(f"Deleted {delete_result.get('deleted_count', 0)} existing events before saving new data")
+
         # Transform data to clean format
         clean_data = transform_scraped_data(data, month, year)
 
@@ -169,6 +175,51 @@ def save_to_convex(data: List[Dict], month: str, year: str) -> Dict[str, Any]:
             "success": False,
             "error": str(e),
             "saved_count": 0
+        }
+
+
+def delete_events_by_month(month: str, year: str) -> Dict[str, Any]:
+    """
+    Delete all events for a specific month and year from Convex.
+    This ensures that when we re-scrape, removed events are also deleted.
+
+    Args:
+        month: Month name (e.g., "September")
+        year: Year string (e.g., "2024")
+
+    Returns:
+        Dictionary with deletion results
+    """
+
+    if not is_convex_available():
+        return {
+            "success": False,
+            "error": "Convex client not available. Check CONVEX_URL environment variable.",
+            "deleted_count": 0
+        }
+
+    try:
+        # Call Convex mutation to delete events for this month/year
+        result = client.mutation("economicEvents:deleteEventsByMonth", {
+            "month": month,
+            "year": int(year)
+        })
+
+        logger.info(f"✅ Deleted events for {month} {year}: {result.get('deleted_count', 0)} events removed")
+
+        return {
+            "success": True,
+            "deleted_count": result.get("deleted_count", 0),
+            "month": month,
+            "year": year
+        }
+
+    except Exception as e:
+        logger.error(f"❌ Failed to delete events for {month} {year}: {e}")
+        return {
+            "success": False,
+            "error": str(e),
+            "deleted_count": 0
         }
 
 

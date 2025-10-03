@@ -246,7 +246,8 @@ def scrape_month(month_param):
         storage_method = os.getenv('DATA_STORAGE', 'both')
         add_activity_log("INFO", f"Saving data using method: {storage_method}")
 
-        save_results = save_data(data, month, str(year), storage_method)
+        # Replace existing events to ensure deleted events on Forex Factory are also removed
+        save_results = save_data(data, month, str(year), storage_method, replace_existing=True)
 
         # Log storage results
         if save_results["csv"]["attempted"]:
