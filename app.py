@@ -222,6 +222,7 @@ def scrape_month(month_param):
         forex_url = f"{FOREX_FACTORY_URL}?month={param}"
         try:
             driver.get(forex_url)
+            time.sleep(10)  # Wait for page to fully load
             scroll_to_end(driver)
             forex_data, _ = parse_table(driver, month, str(year), SOURCE_FOREX)
             total_forex = len(forex_data)
@@ -241,6 +242,7 @@ def scrape_month(month_param):
         energy_url = f"{ENERGY_EXCH_URL}?month={param}"
         try:
             driver.get(energy_url)
+            time.sleep(10)  # Wait for page to fully load
             scroll_to_end(driver)
             energy_data, _ = parse_table(driver, month, str(year), SOURCE_ENERGY)
             total_energy = len(energy_data)
