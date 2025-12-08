@@ -1,4 +1,9 @@
-# Mapping of Forex Factory element class names to semantic labels for parsing.
+# Calendar Sources
+FOREX_FACTORY_URL = "https://www.forexfactory.com/calendar"
+ENERGY_EXCH_URL = "https://www.energyexch.com/calendar"
+
+# Mapping of calendar element class names to semantic labels for parsing.
+# Both Forex Factory and Energy Exchange use the same structure.
 ALLOWED_ELEMENT_TYPES = {
     "calendar__cell": "date",  # Generic cell (used for date continuation rows)
     "calendar__cell calendar__date": "date",  # Date of the news event
@@ -18,17 +23,28 @@ EXCLUDED_ELEMENT_TYPES = [
 ]
 
 # Mapping of CSS icon classes to impact colors
+# ff = Forex Factory, ee = Energy Exchange
 ICON_COLOR_MAP = {
+    # Forex Factory
     "icon icon--ff-impact-yel": "yellow",
     "icon icon--ff-impact-ora": "orange",
     "icon icon--ff-impact-red": "red",
-    "icon icon--ff-impact-gra": "gray"
+    "icon icon--ff-impact-gra": "gray",
+    # Energy Exchange
+    "icon icon--ee-impact-yel": "yellow",
+    "icon icon--ee-impact-ora": "orange",
+    "icon icon--ee-impact-red": "red",
+    "icon icon--ee-impact-gra": "gray",
 }
 
-# Allowed currency codes for filtering news events
+# Allowed currency codes for filtering Forex news events
 ALLOWED_CURRENCY_CODES = ['USD']
 
-# Allowed impact levels for filtering news events
+# Allowed currency/commodity codes for filtering Energy news events
+# Common energy commodities: OIL, NG (Natural Gas), BRENT, WTI, etc.
+ALLOWED_ENERGY_CODES = ['OIL', 'NG', 'BRENT', 'WTI', 'NATGAS', 'CL', 'CRUDE']
+
+# Allowed impact levels for filtering news events (applies to both calendars)
 ALLOWED_IMPACT_COLORS = ['red', 'orange', 'gray']
 
 # Set this to the target timezone you'd like your output to be in.

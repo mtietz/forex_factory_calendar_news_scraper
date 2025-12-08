@@ -11,7 +11,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Import your existing scraper functions
-from scraper import init_driver, scroll_to_end, parse_table
+from scraper import init_driver, scroll_to_end, parse_table, scrape_all_calendars, scrape_single_source, get_month_year_from_param, SOURCE_FOREX, SOURCE_ENERGY
+from config import FOREX_FACTORY_URL, ENERGY_EXCH_URL
 from utils import save_data
 import config
 
@@ -185,8 +186,8 @@ def scrape_specific_month(month):
 
 def scrape_month(month_param):
     """
-    This function does the actual scraping work.
-    It's a modified version of your main() function.
+    This function does the actual scraping work for BOTH calendars.
+    Scrapes Forex Factory and Energy Exchange calendars.
     Runs in background thread so API doesn't hang.
     """
     global scraping_status
@@ -197,71 +198,66 @@ def scrape_month(month_param):
     scraping_status["last_error"] = None
 
     try:
-        add_activity_log("INFO", f"Starting scrape for month: {month_param}")
+        add_activity_log("INFO", f"Starting scrape for month: {month_param} (both calendars)")
 
-        # This is copied from your main() function
         param = month_param.lower()
-        url = f"https://www.forexfactory.com/calendar?month={param}"
-        add_activity_log("INFO", f"Navigating to {url}")
+        month, year = get_month_year_from_param(param)
 
         # Initialize Chrome driver
         add_activity_log("INFO", "Initializing Chrome WebDriver...")
         driver = init_driver()
-        driver.get(url)
 
-        # Detect timezone (from your code)
+        # Detect timezone
+        driver.get(FOREX_FACTORY_URL)
         detected_tz = driver.execute_script("return Intl.DateTimeFormat().resolvedOptions().timeZone")
         add_activity_log("INFO", f"Browser timezone detected: {detected_tz}")
         config.SCRAPER_TIMEZONE = detected_tz
 
-        # Scroll to load all content (from your code)
-        add_activity_log("INFO", "Scrolling page to load all events...")
-        scroll_to_end(driver)
+        storage_method = os.getenv('DATA_STORAGE', 'both')
+        total_forex = 0
+        total_energy = 0
 
-        # Determine month name and year (from your code)
-        if param == "this":
-            now = datetime.now()
-            month = now.strftime("%B")
-            year = now.year
-        elif param == "next":
-            now = datetime.now()
-            next_month = (now.month % 12) + 1
-            year = now.year if now.month < 12 else now.year + 1
-            month = datetime(year, next_month, 1).strftime("%B")
-        else:
-            month = param.capitalize()
-            year = datetime.now().year
+        # ========== SCRAPE FOREX FACTORY ==========
+        add_activity_log("INFO", f"Scraping Forex Factory for {month} {year}...")
+        forex_url = f"{FOREX_FACTORY_URL}?month={param}"
+        try:
+            driver.get(forex_url)
+            scroll_to_end(driver)
+            forex_data, _ = parse_table(driver, month, str(year), SOURCE_FOREX)
+            total_forex = len(forex_data)
+            add_activity_log("INFO", f"Parsed {total_forex} events from Forex Factory")
 
-        add_activity_log("INFO", f"Parsing data for {month} {year}")
+            # Save forex data
+            forex_save_results = save_data(forex_data, month, str(year), storage_method, replace_existing=True, source=SOURCE_FOREX)
+            if forex_save_results["csv"]["success"]:
+                add_activity_log("INFO", f"✅ Forex CSV saved successfully")
+            if forex_save_results["convex"]["success"]:
+                add_activity_log("INFO", f"✅ Forex Convex saved {forex_save_results['convex']['saved_count']} records")
+        except Exception as e:
+            add_activity_log("ERROR", f"❌ Forex Factory scrape failed: {str(e)}")
 
-        # Parse the table (your existing function)
-        data, _ = parse_table(driver, month, str(year))
-        add_activity_log("INFO", f"Parsed {len(data)} events from calendar")
+        # ========== SCRAPE ENERGY EXCHANGE ==========
+        add_activity_log("INFO", f"Scraping Energy Exchange for {month} {year}...")
+        energy_url = f"{ENERGY_EXCH_URL}?month={param}"
+        try:
+            driver.get(energy_url)
+            scroll_to_end(driver)
+            energy_data, _ = parse_table(driver, month, str(year), SOURCE_ENERGY)
+            total_energy = len(energy_data)
+            add_activity_log("INFO", f"Parsed {total_energy} events from Energy Exchange")
 
-        # Clean up WebDriver first
+            # Save energy data
+            energy_save_results = save_data(energy_data, month, str(year), storage_method, replace_existing=True, source=SOURCE_ENERGY)
+            if energy_save_results["csv"]["success"]:
+                add_activity_log("INFO", f"✅ Energy CSV saved successfully")
+            if energy_save_results["convex"]["success"]:
+                add_activity_log("INFO", f"✅ Energy Convex saved {energy_save_results['convex']['saved_count']} records")
+        except Exception as e:
+            add_activity_log("ERROR", f"❌ Energy Exchange scrape failed: {str(e)}")
+
+        # Clean up WebDriver
         driver.quit()
         add_activity_log("INFO", "WebDriver closed successfully")
-
-        # Save data using new flexible storage system
-        storage_method = os.getenv('DATA_STORAGE', 'both')
-        add_activity_log("INFO", f"Saving data using method: {storage_method}")
-
-        # Replace existing events to ensure deleted events on Forex Factory are also removed
-        save_results = save_data(data, month, str(year), storage_method, replace_existing=True)
-
-        # Log storage results
-        if save_results["csv"]["attempted"]:
-            if save_results["csv"]["success"]:
-                add_activity_log("INFO", f"✅ CSV saved successfully")
-            else:
-                add_activity_log("ERROR", f"❌ CSV save failed: {save_results['csv']['error']}")
-
-        if save_results["convex"]["attempted"]:
-            if save_results["convex"]["success"]:
-                count = save_results["convex"]["saved_count"]
-                add_activity_log("INFO", f"✅ Convex saved {count} records successfully")
-            else:
-                add_activity_log("ERROR", f"❌ Convex save failed: {save_results['convex']['error']}")
 
         # Update status - SUCCESS
         scraping_status["is_running"] = False
@@ -269,7 +265,7 @@ def scrape_month(month_param):
         scraping_status["last_run"] = datetime.now().isoformat()
         scraping_status["success_count"] += 1
 
-        add_activity_log("INFO", f"✅ Successfully completed scraping for {month} {year} - Storage results: {save_results}")
+        add_activity_log("INFO", f"✅ Completed scraping for {month} {year} - Total: {total_forex + total_energy} events (Forex: {total_forex}, Energy: {total_energy})")
 
     except Exception as e:
         # Get full error details including stack trace
@@ -301,14 +297,14 @@ if __name__ == '__main__':
     - host='0.0.0.0': Makes it accessible from other machines
     - port=5000: Default Flask port
     """
-    print("🚀 Starting Forex Factory Scraper API...")
+    print("🚀 Starting Forex & Energy Calendar Scraper API...")
     print("\n📍 Available endpoints:")
     print("  GET  /health          - Health check")
     print("  GET  /status          - Check scraping status")
     print("  GET  /logs            - View recent activity logs")
     print("  GET  /convex/test     - Test Convex database connection")
-    print("  GET  /scrape          - Scrape current month")
-    print("  GET  /scrape/<month>  - Scrape specific month")
+    print("  GET  /scrape          - Scrape current month (both calendars)")
+    print("  GET  /scrape/<month>  - Scrape specific month (both calendars)")
 
     # Show environment configuration
     storage_method = os.getenv('DATA_STORAGE', 'both')
@@ -317,6 +313,10 @@ if __name__ == '__main__':
     print(f"  Storage method: {storage_method}")
     print(f"  Convex URL: {convex_url}")
     print(f"  Convex integration: {'✅ Available' if CONVEX_INTEGRATION else '❌ Not available'}")
+
+    print(f"\n📊 Data Sources:")
+    print(f"  - Forex Factory: {FOREX_FACTORY_URL}")
+    print(f"  - Energy Exchange: {ENERGY_EXCH_URL}")
 
     print(f"\n🌐 Access at: http://localhost:5000")
     print("💡 Try: curl http://localhost:5000/health")

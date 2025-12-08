@@ -91,7 +91,7 @@ def transform_scraped_data(raw_data: List[Dict], month: str, year: str) -> List[
     return transformed_records
 
 
-def save_to_convex(data: List[Dict], month: str, year: str, replace_existing: bool = False) -> Dict[str, Any]:
+def save_to_convex(data: List[Dict], month: str, year: str, replace_existing: bool = False, source: str = "forex_factory") -> Dict[str, Any]:
     """
     Save scraped data to Convex database.
 
@@ -100,6 +100,7 @@ def save_to_convex(data: List[Dict], month: str, year: str, replace_existing: bo
         month: Month name
         year: Year string
         replace_existing: If True, delete existing events for this month/year before saving
+        source: Calendar source (forex_factory or energy_exch)
 
     Returns:
         Dictionary with operation results
@@ -113,10 +114,10 @@ def save_to_convex(data: List[Dict], month: str, year: str, replace_existing: bo
         }
 
     try:
-        # Delete existing events if requested
+        # Delete existing events if requested (source-specific)
         if replace_existing:
-            delete_result = delete_events_by_month(month, year)
-            logger.info(f"Deleted {delete_result.get('deleted_count', 0)} existing events before saving new data")
+            delete_result = delete_events_by_month(month, year, source)
+            logger.info(f"Deleted {delete_result.get('deleted_count', 0)} existing {source} events before saving new data")
 
         # Transform data to clean format
         clean_data = transform_scraped_data(data, month, year)
@@ -178,14 +179,15 @@ def save_to_convex(data: List[Dict], month: str, year: str, replace_existing: bo
         }
 
 
-def delete_events_by_month(month: str, year: str) -> Dict[str, Any]:
+def delete_events_by_month(month: str, year: str, source: str = "forex_factory") -> Dict[str, Any]:
     """
-    Delete all events for a specific month and year from Convex.
+    Delete all events for a specific month, year, and source from Convex.
     This ensures that when we re-scrape, removed events are also deleted.
 
     Args:
         month: Month name (e.g., "September")
         year: Year string (e.g., "2024")
+        source: Calendar source (forex_factory or energy_exch)
 
     Returns:
         Dictionary with deletion results
@@ -199,23 +201,25 @@ def delete_events_by_month(month: str, year: str) -> Dict[str, Any]:
         }
 
     try:
-        # Call Convex mutation to delete events for this month/year
+        # Call Convex mutation to delete events for this month/year/source
         result = client.mutation("economicEvents:deleteEventsByMonth", {
             "month": month,
-            "year": int(year)
+            "year": int(year),
+            "source": source
         })
 
-        logger.info(f"✅ Deleted events for {month} {year}: {result.get('deleted_count', 0)} events removed")
+        logger.info(f"✅ Deleted {source} events for {month} {year}: {result.get('deleted_count', 0)} events removed")
 
         return {
             "success": True,
             "deleted_count": result.get("deleted_count", 0),
             "month": month,
-            "year": year
+            "year": year,
+            "source": source
         }
 
     except Exception as e:
-        logger.error(f"❌ Failed to delete events for {month} {year}: {e}")
+        logger.error(f"❌ Failed to delete {source} events for {month} {year}: {e}")
         return {
             "success": False,
             "error": str(e),

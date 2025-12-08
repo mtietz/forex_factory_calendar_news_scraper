@@ -84,6 +84,7 @@ def reformat_data(data: list, year: str) -> list:
         new_row["actual"] = row.get("actual", "")
         new_row["forecast"] = row.get("forecast", "")
         new_row["previous"] = row.get("previous", "")
+        new_row["source"] = row.get("source", "forex_factory")
 
         # Replace "empty" with ""
         for key, value in new_row.items():
@@ -98,17 +99,46 @@ def reformat_data(data: list, year: str) -> list:
 
 
 def filter_row(row):
+    """
+    Filter row based on source-specific currency codes and impact colors.
+    """
+    source = row.get('source', 'forex_factory')
 
-    if row['currency'] not in config.ALLOWED_CURRENCY_CODES:
+    # Must have an event name
+    if not row.get('event') or row.get('event') == 'empty':
         return False
-    
-    if row['impact'].lower() not in config.ALLOWED_IMPACT_COLORS:
+
+    # Use source-specific currency filter
+    if source == 'energy_exch':
+        # Energy Exchange doesn't have a separate currency column
+        # The currency/country code is embedded in the event name (e.g., "US ISM Manufacturing")
+        # Skip currency filtering for energy
+        pass
+    else:
+        # Forex Factory has explicit currency column
+        if row['currency'] not in config.ALLOWED_CURRENCY_CODES:
+            return False
+
+    # Impact filter applies to both calendars
+    impact = row.get('impact', '')
+    if impact and impact != 'empty' and impact.lower() not in config.ALLOWED_IMPACT_COLORS:
         return False
-    
+
     return row
 
-def save_csv(data, month, year):
-    """Save data to CSV file (original functionality)"""
+def save_csv(data, month, year, source="forex_factory"):
+    """
+    Save data to CSV file.
+
+    Args:
+        data: Raw scraped data
+        month: Month name
+        year: Year string
+        source: Calendar source (forex_factory or energy_exch)
+
+    Returns:
+        True if successful, False otherwise
+    """
     structured_rows = reformat_data(data, year)
     if not structured_rows:
         return False
@@ -116,11 +146,18 @@ def save_csv(data, month, year):
     header = list(structured_rows[0].keys())
     df = pd.DataFrame(structured_rows, columns=header)
     os.makedirs("news", exist_ok=True)
-    df.to_csv(f"news/{month}_{year}_news.csv", index=False)
+
+    # Use source-specific filename
+    if source == "energy_exch":
+        filename = f"news/{month}_{year}_energy_news.csv"
+    else:
+        filename = f"news/{month}_{year}_news.csv"
+
+    df.to_csv(filename, index=False)
     return True
 
 
-def save_data(data, month, year, storage_method="both", replace_existing=False):
+def save_data(data, month, year, storage_method="both", replace_existing=False, source="forex_factory"):
     """
     Enhanced save function that supports multiple storage methods.
 
@@ -130,6 +167,7 @@ def save_data(data, month, year, storage_method="both", replace_existing=False):
         year: Year string
         storage_method: "csv", "convex", or "both"
         replace_existing: If True, delete existing events before saving (Convex only)
+        source: Calendar source (forex_factory or energy_exch)
 
     Returns:
         Dictionary with results from each storage method
@@ -143,7 +181,7 @@ def save_data(data, month, year, storage_method="both", replace_existing=False):
     if storage_method in ["csv", "both"]:
         results["csv"]["attempted"] = True
         try:
-            results["csv"]["success"] = save_csv(data, month, year)
+            results["csv"]["success"] = save_csv(data, month, year, source)
         except Exception as e:
             results["csv"]["error"] = str(e)
 
@@ -156,7 +194,7 @@ def save_data(data, month, year, storage_method="both", replace_existing=False):
 
             # Use structured data for Convex (same as CSV)
             structured_rows = reformat_data(data, year)
-            convex_result = save_to_convex(structured_rows, month, year, replace_existing=replace_existing)
+            convex_result = save_to_convex(structured_rows, month, year, replace_existing=replace_existing, source=source)
 
             results["convex"]["success"] = convex_result.get("success", False)
             results["convex"]["saved_count"] = convex_result.get("saved_count", 0)
