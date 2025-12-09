@@ -207,21 +207,22 @@ def scrape_month(month_param):
         add_activity_log("INFO", "Initializing Chrome WebDriver...")
         driver = init_driver()
 
-        # Detect timezone
-        driver.get(FOREX_FACTORY_URL)
-        detected_tz = driver.execute_script("return Intl.DateTimeFormat().resolvedOptions().timeZone")
-        add_activity_log("INFO", f"Browser timezone detected: {detected_tz}")
-        config.SCRAPER_TIMEZONE = detected_tz
-
         storage_method = os.getenv('DATA_STORAGE', 'both')
         total_forex = 0
         total_energy = 0
 
         # ========== SCRAPE FOREX FACTORY ==========
+        # Go directly to the URL with month param (like original working version)
         add_activity_log("INFO", f"Scraping Forex Factory for {month} {year}...")
         forex_url = f"{FOREX_FACTORY_URL}?month={param}"
         try:
             driver.get(forex_url)
+
+            # Detect timezone on first page load
+            detected_tz = driver.execute_script("return Intl.DateTimeFormat().resolvedOptions().timeZone")
+            add_activity_log("INFO", f"Browser timezone detected: {detected_tz}")
+            config.SCRAPER_TIMEZONE = detected_tz
+
             time.sleep(10)  # Wait for page to fully load
             scroll_to_end(driver)
             forex_data, _ = parse_table(driver, month, str(year), SOURCE_FOREX)

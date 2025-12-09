@@ -17,27 +17,18 @@ SOURCE_ENERGY = "energy_exch"
 def init_driver(headless=True) -> webdriver.Chrome:
     options = webdriver.ChromeOptions()
     if headless:
-        options.add_argument("--headless=new")  # New headless mode (less detectable)
+        options.add_argument("--headless")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--disable-gpu")
-    options.add_argument("--window-size=1920,1080")
-    options.add_argument("--start-maximized")
+    options.add_argument("window-size=1920x1080")
     options.add_argument(
-        "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
     )
-    # Anti-detection options
-    options.add_argument("--disable-blink-features=AutomationControlled")
-    options.add_experimental_option("excludeSwitches", ["enable-automation"])
-    options.add_experimental_option("useAutomationExtension", False)
 
     print("Attempting to initialize WebDriver with ChromeDriverManager...")
     service = Service(ChromeDriverManager().install())
     driver = webdriver.Chrome(service=service, options=options)
-
-    # Remove webdriver property to avoid detection
-    driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
-
     print("WebDriver initialized successfully using ChromeDriverManager.")
     return driver
 
