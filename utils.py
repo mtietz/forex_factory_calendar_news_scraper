@@ -210,6 +210,37 @@ def save_data(data, month, year, storage_method="both", replace_existing=False, 
     return results
 
 
+def is_non_standard_time(time_str):
+    """
+    Check if time_str is a non-standard time format that shouldn't be converted.
+
+    These include:
+    - "All Day", "Tentative" - standard non-time markers
+    - "Day 1", "Day 2", etc. - multi-day event markers (e.g., WEF meetings)
+    - "Sep Data", "Oct Data", etc. - data period labels
+    - "12th-15th", "1st-3rd", etc. - date ranges
+    """
+    time_lower = time_str.lower().strip()
+
+    # Standard non-time markers
+    if time_lower in ["all day", "tentative"]:
+        return True
+
+    # Multi-day event markers: "Day 1", "Day 2", etc.
+    if re.match(r'^day\s+\d+$', time_lower):
+        return True
+
+    # Data period labels: "Sep Data", "Oct Data", "November Data", etc.
+    if re.match(r'^(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|january|february|march|april|may|june|july|august|september|october|november|december)\s+data$', time_lower):
+        return True
+
+    # Date ranges: "12th-15th", "1st-3rd", "2nd-5th", etc.
+    if re.match(r'^\d{1,2}(st|nd|rd|th)[-–]\d{1,2}(st|nd|rd|th)$', time_lower):
+        return True
+
+    return False
+
+
 def convert_time_zone(date_str, time_str, from_zone_str, to_zone_str):
     """
     Convert time from one timezone to another.
@@ -219,7 +250,7 @@ def convert_time_zone(date_str, time_str, from_zone_str, to_zone_str):
     if not time_str or not date_str:
         return time_str
 
-    if time_str.lower() in ["all day", "tentative"]:
+    if is_non_standard_time(time_str):
         return time_str
 
     try:
