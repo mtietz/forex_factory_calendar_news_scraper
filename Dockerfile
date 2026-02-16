@@ -13,6 +13,9 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
+# Install tini - a proper init process to reap zombie children
+RUN apt-get update && apt-get install -y tini && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
 # Copy requirements and install Python dependencies
@@ -29,5 +32,6 @@ EXPOSE 5000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
   CMD curl -f http://localhost:5000/health || exit 1
 
-# Run the Flask app
+# Use tini as PID 1 to properly reap zombie child processes
+ENTRYPOINT ["tini", "--"]
 CMD ["python", "app.py"]
