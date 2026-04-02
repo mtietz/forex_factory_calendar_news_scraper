@@ -1,99 +1,74 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
-
 ## Commands
 
-### Setup and Installation
 ```bash
 # Install dependencies
 python3 -m pip install -r requirements.txt
 
-# Copy environment template and configure
-cp .env.example .env
-# Edit .env with your Convex URL and preferences
-```
-
-### Running the Scraper
-
-#### Web API (Recommended)
-```bash
+# Run web API
 python3 app.py
 
-# Available endpoints:
-# GET/POST /health          - Health check
-# GET      /status          - Check scraping status
-# GET      /logs            - View recent activity logs
-# GET      /convex/test     - Test Convex database connection
-# GET/POST /scrape          - Scrape current month (both calendars)
-# GET/POST /scrape/<month>  - Scrape specific month (both calendars)
-```
-
-#### CLI
-```bash
-python3 scraper.py                              # Current month (both calendars)
+# Run CLI
+python3 scraper.py                              # Current month, both calendars
 python3 scraper.py --months this next january   # Multiple months
 python3 scraper.py --source forex               # Forex Factory only
 python3 scraper.py --source energy              # Energy Exchange only
-python3 scraper.py --source all                 # Both (default)
-```
 
-#### Docker
-```bash
-docker build -t forex-scraper .
-docker run -p 5000:5000 --env-file .env forex-scraper
+# Docker
+docker build -t economic-calendar-scraper .
+docker run -p 5000:5000 --env-file .env economic-calendar-scraper
+
+# Environment setup
+cp .env.example .env
 ```
 
 ## Architecture
 
-Python-based calendar scraper using Selenium WebDriver to extract economic news events from two sources:
-- **Forex Factory** (forexfactory.com/calendar) - Currency/forex news
-- **Energy Exchange** (energyexch.com/calendar) - Energy/commodity news
+Selenium-based scraper for economic calendar events from Forex Factory and Energy Exchange. Both sites share the same HTML table structure (`calendar__table` with `calendar__cell` classes).
 
-### Core Components
-- **app.py**: Flask API server with background threading for non-blocking scrape operations
-- **scraper.py**: Main scraper with `scrape_all_calendars()`, `scrape_single_source()`, `parse_table()` functions
-- **utils.py**: Data reformatting, timezone conversion, and flexible storage (`save_data()` supports CSV/Convex/both)
-- **config.py**: Static filtering rules, CSS class mappings, and calendar URLs
-- **convex_client.py**: Convex database integration with source-aware `save_to_convex()`, `delete_events_by_month()`
+### Files
+
+| File | Purpose |
+|---|---|
+| `app.py` | Flask API server. Runs scrapes in background threads. Endpoints: `/health`, `/status`, `/logs`, `/convex/test`, `/scrape`, `/scrape/<month>` |
+| `scraper.py` | Core scraping logic. `init_driver()` creates headless Chrome, `scroll_to_end()` handles infinite scroll, `parse_table()` extracts rows using CSS class mappings, `scrape_all_calendars()` orchestrates both sources |
+| `utils.py` | `reformat_data()` structures raw rows, `filter_row()` applies currency/impact filters, `convert_time_zone()` handles timezone conversion, `save_data()` dispatches to CSV/Convex, `save_csv()` writes CSV files |
+| `config.py` | `ALLOWED_ELEMENT_TYPES` maps CSS classes to field names, `ICON_COLOR_MAP` maps impact icon classes to colors (both `ff-` and `ee-` prefixes), static filter defaults |
+| `convex_client.py` | `save_to_convex()` transforms and saves records, `delete_events_by_month()` clears by month/year/source, `test_convex_connection()` pings backend |
+| `simple_scrape.py` | Minimal standalone scraper from the original fork. Not used by the main application |
 
 ### Data Flow
-1. API request triggers `scrape_month()` in background thread
-2. Selenium Chrome driver scrapes both Forex Factory and Energy Exchange sequentially
-3. `scroll_to_end()` loads all events via infinite scroll (30-60 seconds per calendar)
-4. `parse_table()` extracts data using CSS class mappings, adds `source` field to each row
-5. `reformat_data()` applies source-specific filtering and timezone conversion
-6. `save_data()` writes to separate CSV files and/or Convex database per source
 
-### Configuration
+1. API request or CLI invocation triggers scraping
+2. `init_driver()` creates headless Chrome with anti-detection options
+3. Browser navigates to calendar URL with `?month=` parameter
+4. `scroll_to_end()` scrolls in 500px increments until position stops changing
+5. `parse_table()` iterates `<tr>` rows in `calendar__table`, maps `<td>` classes via `ALLOWED_ELEMENT_TYPES`, resolves impact colors via `ICON_COLOR_MAP`, adds `source` field to each row
+6. `reformat_data()` fills in date/time from previous rows (calendar uses row spanning), applies `filter_row()` for currency and impact filtering
+7. `convert_time_zone()` converts times from browser timezone to `TARGET_TIMEZONE`, skipping non-standard formats ("All Day", "Day 1", "Sep Data", date ranges)
+8. `save_data()` writes to CSV and/or Convex based on `DATA_STORAGE` env var
 
-**Environment variables (`.env`)**:
-- `CONVEX_URL`: Convex deployment URL
-- `DATA_STORAGE`: `csv`, `convex`, or `both`
-- `TARGET_TIMEZONE`: Output timezone (default: US/Eastern)
-- `ALLOWED_CURRENCY_CODES`: Forex currency filter (e.g., USD)
-- `ALLOWED_ENERGY_CODES`: Energy commodity filter (e.g., OIL,NG,BRENT,WTI)
-- `ALLOWED_IMPACT_COLORS`: Impact filter for both (red, orange, yellow, gray)
+### Source Constants
 
-**Static config (`config.py`)**:
-- `FOREX_FACTORY_URL`, `ENERGY_EXCH_URL`: Calendar base URLs
-- `ALLOWED_ELEMENT_TYPES`: Maps CSS classes to field names (shared by both sites)
-- `ICON_COLOR_MAP`: Maps impact icon CSS classes to color strings
+- `SOURCE_FOREX = "forex_factory"` and `SOURCE_ENERGY = "energy_exch"` in `scraper.py`
+- Used throughout for source-specific filtering, filenames, and Convex records
 
-### Output Files
-- Forex: `news/{Month}_{Year}_news.csv`
-- Energy: `news/{Month}_{Year}_energy_news.csv`
+### Key Behaviors
 
-### Convex Integration
+- Scraping takes 30-60 seconds per calendar due to infinite scroll + page load delays
+- API runs scrapes in background threads with mutex (one scrape at a time)
+- Browser timezone is auto-detected via JS `Intl.DateTimeFormat()` on first page load
+- Energy Exchange events skip currency filtering (commodities are embedded in event names)
+- `parse_table()` also calls `save_csv()` directly (in addition to the API's `save_data()` call)
 
-The Convex backend requires these mutations in `convex/economicEvents.ts`:
-- `economicEvents:saveEconomicEvent` - Save individual event records (includes `source` field)
-- `economicEvents:saveScrapeSession` - Save batch metadata
-- `economicEvents:deleteEventsByMonth` - Clear existing events by month/year/source
-- `economicEvents:ping` - Connection test query
+### Environment Variables
 
-### Debugging Tips
-- Check `/logs` endpoint for recent activity
-- Browser timezone is auto-detected via `Intl.DateTimeFormat().resolvedOptions().timeZone`
-- Set `headless=False` in `init_driver()` to see browser during scraping
-- Use `--source forex` or `--source energy` CLI flags to test individual calendars
+See `.env.example` for all options. Key ones: `CONVEX_URL`, `DATA_STORAGE` (csv/convex/both), `TARGET_TIMEZONE`, `ALLOWED_CURRENCY_CODES`, `ALLOWED_ENERGY_CODES`, `ALLOWED_IMPACT_COLORS`.
+
+### Debugging
+
+- `/logs` endpoint shows last 20 activity entries
+- `/convex/test` tests database connectivity
+- Set `headless=False` in `init_driver()` to watch the browser
+- `--source forex` or `--source energy` CLI flags to test one calendar at a time
