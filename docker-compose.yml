@@ -1,0 +1,22 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: economic-calendar-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: economic_calendar
+      POSTGRES_USER: scraper
+      POSTGRES_PASSWORD: scraper_password
+    ports:
+      # 5432/5433/5434 were already in use locally; 55432 was free.
+      - "55432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U scraper -d economic_calendar"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  postgres_data:

@@ -16,6 +16,7 @@ python3 scraper.py --source forex               # Forex Factory only
 python3 scraper.py --source energy              # Energy Exchange only
 
 # Docker
+docker compose up -d postgres                       # Local PostgreSQL on localhost:55432
 docker build -t economic-calendar-scraper .
 docker run -p 5000:5000 --env-file .env economic-calendar-scraper
 
@@ -31,11 +32,11 @@ Selenium-based scraper for economic calendar events from Forex Factory and Energ
 
 | File | Purpose |
 |---|---|
-| `app.py` | Flask API server. Runs scrapes in background threads. Endpoints: `/health`, `/status`, `/logs`, `/convex/test`, `/scrape`, `/scrape/<month>` |
+| `app.py` | Flask API server. Runs scrapes in background threads. Endpoints: `/health`, `/status`, `/logs`, `/postgres/test`, `/events`, `/scrape`, `/scrape/<month>` |
 | `scraper.py` | Core scraping logic. `init_driver()` creates headless Chrome, `scroll_to_end()` handles infinite scroll, `parse_table()` extracts rows using CSS class mappings, `scrape_all_calendars()` orchestrates both sources |
-| `utils.py` | `reformat_data()` structures raw rows, `filter_row()` applies currency/impact filters, `convert_time_zone()` handles timezone conversion, `save_data()` dispatches to CSV/Convex, `save_csv()` writes CSV files |
+| `utils.py` | `reformat_data()` structures raw rows, `filter_row()` applies currency/impact filters, `convert_time_zone()` handles timezone conversion, `save_data()` dispatches to CSV/PostgreSQL, `save_csv()` writes CSV files |
 | `config.py` | `ALLOWED_ELEMENT_TYPES` maps CSS classes to field names, `ICON_COLOR_MAP` maps impact icon classes to colors (both `ff-` and `ee-` prefixes), static filter defaults |
-| `convex_client.py` | `save_to_convex()` transforms and saves records, `delete_events_by_month()` clears by month/year/source, `test_convex_connection()` pings backend |
+| `postgres_client.py` | PostgreSQL schema setup, event/session inserts, month/source replacement deletes, connection tests, and event queries |
 | `simple_scrape.py` | Minimal standalone scraper from the original fork. Not used by the main application |
 
 ### Data Flow
@@ -47,12 +48,12 @@ Selenium-based scraper for economic calendar events from Forex Factory and Energ
 5. `parse_table()` iterates `<tr>` rows in `calendar__table`, maps `<td>` classes via `ALLOWED_ELEMENT_TYPES`, resolves impact colors via `ICON_COLOR_MAP`, adds `source` field to each row
 6. `reformat_data()` fills in date/time from previous rows (calendar uses row spanning), applies `filter_row()` for currency and impact filtering
 7. `convert_time_zone()` converts times from browser timezone to `TARGET_TIMEZONE`, skipping non-standard formats ("All Day", "Day 1", "Sep Data", date ranges)
-8. `save_data()` writes to CSV and/or Convex based on `DATA_STORAGE` env var
+8. `save_data()` writes to CSV and/or PostgreSQL based on `DATA_STORAGE` env var
 
 ### Source Constants
 
 - `SOURCE_FOREX = "forex_factory"` and `SOURCE_ENERGY = "energy_exch"` in `scraper.py`
-- Used throughout for source-specific filtering, filenames, and Convex records
+- Used throughout for source-specific filtering, filenames, and PostgreSQL records
 
 ### Key Behaviors
 
@@ -64,11 +65,11 @@ Selenium-based scraper for economic calendar events from Forex Factory and Energ
 
 ### Environment Variables
 
-See `.env.example` for all options. Key ones: `CONVEX_URL`, `DATA_STORAGE` (csv/convex/both), `TARGET_TIMEZONE`, `ALLOWED_CURRENCY_CODES`, `ALLOWED_ENERGY_CODES`, `ALLOWED_IMPACT_COLORS`.
+See `.env.example` for all options. Key ones: `DATABASE_URL`, `DATA_STORAGE` (csv/postgres/csv,postgres), `TARGET_TIMEZONE`, `ALLOWED_CURRENCY_CODES`, `ALLOWED_ENERGY_CODES`, `ALLOWED_IMPACT_COLORS`.
 
 ### Debugging
 
 - `/logs` endpoint shows last 20 activity entries
-- `/convex/test` tests database connectivity
+- `/postgres/test` tests database connectivity
 - Set `headless=False` in `init_driver()` to watch the browser
 - `--source forex` or `--source energy` CLI flags to test one calendar at a time
