@@ -1,4 +1,5 @@
 from flask import Flask, jsonify, request
+from functools import wraps
 import logging
 from datetime import datetime
 import threading
@@ -16,12 +17,12 @@ from config import FOREX_FACTORY_URL, ENERGY_EXCH_URL
 from utils import save_data
 import config
 
-# Import Convex testing functions
+# Import PostgreSQL functions
 try:
-    from convex_client import test_convex_connection, is_convex_available
-    CONVEX_INTEGRATION = True
+    from postgres_client import test_postgres_connection, is_postgres_available, query_events, get_event_by_id, get_event_summary
+    POSTGRES_INTEGRATION = True
 except ImportError:
-    CONVEX_INTEGRATION = False
+    POSTGRES_INTEGRATION = False
 
 # Configure logging so we can see what's happening
 logging.basicConfig(
@@ -32,6 +33,49 @@ logger = logging.getLogger(__name__)
 
 # Create Flask application instance
 app = Flask(__name__)
+
+API_KEY = os.getenv('API_KEY') or os.getenv('SCRAPER_API_KEY')
+PUBLIC_ENDPOINTS = {'health_check'}
+
+
+def require_api_key(view_func):
+    """Require API key when API_KEY/SCRAPER_API_KEY is configured."""
+    @wraps(view_func)
+    def wrapped(*args, **kwargs):
+        if not API_KEY:
+            return view_func(*args, **kwargs)
+
+        provided_key = request.headers.get('X-API-Key')
+        auth_header = request.headers.get('Authorization', '')
+        if auth_header.startswith('Bearer '):
+            provided_key = auth_header.removeprefix('Bearer ').strip()
+
+        if provided_key != API_KEY:
+            return jsonify({"error": "Unauthorized"}), 401
+
+        return view_func(*args, **kwargs)
+
+    return wrapped
+
+
+@app.before_request
+def enforce_api_key():
+    """Protect all endpoints except explicitly public endpoints when API key is set."""
+    if request.endpoint in PUBLIC_ENDPOINTS:
+        return None
+
+    if not API_KEY:
+        return None
+
+    provided_key = request.headers.get('X-API-Key')
+    auth_header = request.headers.get('Authorization', '')
+    if auth_header.startswith('Bearer '):
+        provided_key = auth_header.removeprefix('Bearer ').strip()
+
+    if provided_key != API_KEY:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    return None
 
 # Global variable to track scraping status
 # In production, you'd use a database, but this works for learning
@@ -106,21 +150,89 @@ def get_logs():
     })
 
 
-# NEW: Convex Connection Test
-@app.route('/convex/test')
-def test_convex():
-    """
-    Test Convex database connection.
-    Useful for debugging database integration.
-    """
-    if not CONVEX_INTEGRATION:
+@app.route('/postgres/test')
+def test_postgres():
+    """Test PostgreSQL database connection and initialize schema."""
+    if not POSTGRES_INTEGRATION:
         return jsonify({
             "available": False,
-            "error": "Convex client not imported"
+            "error": "PostgreSQL client not imported"
         })
 
-    connection_test = test_convex_connection()
-    return jsonify(connection_test)
+    return jsonify(test_postgres_connection())
+
+
+def _postgres_unavailable_response():
+    return jsonify({
+        "error": "PostgreSQL is not configured",
+        "hint": "Set DATABASE_URL or POSTGRES_URL and DATA_STORAGE=csv,postgres"
+    }), 503
+
+
+@app.route('/events')
+def get_events():
+    """
+    Return stored events from PostgreSQL for consumers.
+
+    Query params:
+    source, month, year, impact, currency, date, day, date_from, date_to,
+    event/q, is_high_impact, has_data, order_by, limit, offset.
+    """
+    if not POSTGRES_INTEGRATION or not is_postgres_available():
+        return _postgres_unavailable_response()
+
+    filters = {
+        "source": request.args.get("source"),
+        "month": request.args.get("month"),
+        "year": request.args.get("year"),
+        "impact": request.args.get("impact"),
+        "currency": request.args.get("currency"),
+        "date": request.args.get("date"),
+        "day": request.args.get("day"),
+        "date_from": request.args.get("date_from"),
+        "date_to": request.args.get("date_to"),
+        "event": request.args.get("event"),
+        "q": request.args.get("q"),
+        "is_high_impact": request.args.get("is_high_impact"),
+        "has_data": request.args.get("has_data"),
+        "order_by": request.args.get("order_by"),
+    }
+    limit = request.args.get("limit", 500)
+    offset = request.args.get("offset", 0)
+
+    try:
+        return jsonify(query_events(filters, limit=limit, offset=offset))
+    except ValueError as e:
+        return jsonify({"error": f"Invalid query parameter: {e}"}), 400
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/events/<int:event_id>')
+def get_event(event_id):
+    """Return a single stored event by id."""
+    if not POSTGRES_INTEGRATION or not is_postgres_available():
+        return _postgres_unavailable_response()
+
+    try:
+        event = get_event_by_id(event_id)
+        if not event:
+            return jsonify({"error": "Event not found"}), 404
+        return jsonify({"event": event})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/events/summary')
+def events_summary():
+    """Return event counts grouped by source, impact, and month/year."""
+    if not POSTGRES_INTEGRATION or not is_postgres_available():
+        return _postgres_unavailable_response()
+
+    try:
+        return jsonify(get_event_summary())
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 # STEP 3: Main Scrape Endpoint (Current Month)
@@ -233,8 +345,8 @@ def scrape_month(month_param):
             forex_save_results = save_data(forex_data, month, str(year), storage_method, replace_existing=True, source=SOURCE_FOREX)
             if forex_save_results["csv"]["success"]:
                 add_activity_log("INFO", f"✅ Forex CSV saved successfully")
-            if forex_save_results["convex"]["success"]:
-                add_activity_log("INFO", f"✅ Forex Convex saved {forex_save_results['convex']['saved_count']} records")
+            if forex_save_results["postgres"]["success"]:
+                add_activity_log("INFO", f"✅ Forex PostgreSQL saved {forex_save_results['postgres']['saved_count']} records")
         except Exception as e:
             add_activity_log("ERROR", f"❌ Forex Factory scrape failed: {str(e)}")
 
@@ -253,8 +365,8 @@ def scrape_month(month_param):
             energy_save_results = save_data(energy_data, month, str(year), storage_method, replace_existing=True, source=SOURCE_ENERGY)
             if energy_save_results["csv"]["success"]:
                 add_activity_log("INFO", f"✅ Energy CSV saved successfully")
-            if energy_save_results["convex"]["success"]:
-                add_activity_log("INFO", f"✅ Energy Convex saved {energy_save_results['convex']['saved_count']} records")
+            if energy_save_results["postgres"]["success"]:
+                add_activity_log("INFO", f"✅ Energy PostgreSQL saved {energy_save_results['postgres']['saved_count']} records")
         except Exception as e:
             add_activity_log("ERROR", f"❌ Energy Exchange scrape failed: {str(e)}")
 
@@ -305,17 +417,19 @@ if __name__ == '__main__':
     print("  GET  /health          - Health check")
     print("  GET  /status          - Check scraping status")
     print("  GET  /logs            - View recent activity logs")
-    print("  GET  /convex/test     - Test Convex database connection")
+    print("  GET  /postgres/test   - Test PostgreSQL database connection")
+    print("  GET  /events          - Query stored PostgreSQL events")
+    print("  GET  /events/<id>     - Get one PostgreSQL event")
+    print("  GET  /events/summary  - Event count summary")
     print("  GET  /scrape          - Scrape current month (both calendars)")
     print("  GET  /scrape/<month>  - Scrape specific month (both calendars)")
 
     # Show environment configuration
     storage_method = os.getenv('DATA_STORAGE', 'both')
-    convex_url = os.getenv('CONVEX_URL', 'Not configured')
+    postgres_configured = bool(os.getenv('DATABASE_URL') or os.getenv('POSTGRES_URL'))
     print(f"\n⚙️  Configuration:")
     print(f"  Storage method: {storage_method}")
-    print(f"  Convex URL: {convex_url}")
-    print(f"  Convex integration: {'✅ Available' if CONVEX_INTEGRATION else '❌ Not available'}")
+    print(f"  PostgreSQL configured: {'✅ Yes' if postgres_configured else '❌ No'}")
 
     print(f"\n📊 Data Sources:")
     print(f"  - Forex Factory: {FOREX_FACTORY_URL}")

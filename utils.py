@@ -157,6 +157,30 @@ def save_csv(data, month, year, source="forex_factory"):
     return True
 
 
+def _storage_enabled(storage_method, target):
+    """Check whether a storage backend is enabled.
+
+    Supports single values and comma-separated values, e.g.
+    DATA_STORAGE=postgres or DATA_STORAGE=csv,postgres.
+    """
+    methods = {method.strip().lower() for method in str(storage_method).split(",") if method.strip()}
+
+    aliases = {
+        "postgresql": "postgres",
+        "pg": "postgres",
+        "db": "postgres",
+        "both": "csv,postgres",
+        "all": "csv,postgres",
+    }
+
+    expanded_methods = set()
+    for method in methods:
+        expanded = aliases.get(method, method)
+        expanded_methods.update(part.strip() for part in expanded.split(",") if part.strip())
+
+    return target in expanded_methods
+
+
 def save_data(data, month, year, storage_method="both", replace_existing=False, source="forex_factory"):
     """
     Enhanced save function that supports multiple storage methods.
@@ -165,8 +189,8 @@ def save_data(data, month, year, storage_method="both", replace_existing=False, 
         data: Raw scraped data
         month: Month name
         year: Year string
-        storage_method: "csv", "convex", or "both"
-        replace_existing: If True, delete existing events before saving (Convex only)
+        storage_method: "csv", "postgres", or comma-separated (e.g. "csv,postgres")
+        replace_existing: If True, delete existing events before saving (PostgreSQL only)
         source: Calendar source (forex_factory or energy_exch)
 
     Returns:
@@ -174,38 +198,36 @@ def save_data(data, month, year, storage_method="both", replace_existing=False, 
     """
     results = {
         "csv": {"attempted": False, "success": False, "error": None},
-        "convex": {"attempted": False, "success": False, "error": None, "saved_count": 0}
+        "postgres": {"attempted": False, "success": False, "error": None, "saved_count": 0}
     }
 
     # Save to CSV if requested
-    if storage_method in ["csv", "both"]:
+    if _storage_enabled(storage_method, "csv"):
         results["csv"]["attempted"] = True
         try:
             results["csv"]["success"] = save_csv(data, month, year, source)
         except Exception as e:
             results["csv"]["error"] = str(e)
 
-    # Save to Convex if requested
-    if storage_method in ["convex", "both"]:
-        results["convex"]["attempted"] = True
+    # Save to PostgreSQL if requested
+    if _storage_enabled(storage_method, "postgres"):
+        results["postgres"]["attempted"] = True
         try:
-            # Import here to avoid circular imports and handle missing dependencies
-            from convex_client import save_to_convex
+            from postgres_client import save_to_postgres
 
-            # Use structured data for Convex (same as CSV)
             structured_rows = reformat_data(data, year)
-            convex_result = save_to_convex(structured_rows, month, year, replace_existing=replace_existing, source=source)
+            postgres_result = save_to_postgres(structured_rows, month, year, replace_existing=replace_existing, source=source)
 
-            results["convex"]["success"] = convex_result.get("success", False)
-            results["convex"]["saved_count"] = convex_result.get("saved_count", 0)
+            results["postgres"]["success"] = postgres_result.get("success", False)
+            results["postgres"]["saved_count"] = postgres_result.get("saved_count", 0)
 
-            if not convex_result.get("success", False):
-                results["convex"]["error"] = convex_result.get("error", "Unknown error")
+            if not postgres_result.get("success", False):
+                results["postgres"]["error"] = postgres_result.get("error", "Unknown error")
 
         except ImportError:
-            results["convex"]["error"] = "Convex client not available"
+            results["postgres"]["error"] = "PostgreSQL client dependencies not available"
         except Exception as e:
-            results["convex"]["error"] = str(e)
+            results["postgres"]["error"] = str(e)
 
     return results
 
